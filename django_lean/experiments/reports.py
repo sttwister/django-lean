@@ -29,13 +29,29 @@ def calculate_participant_conversion(participant, goal_type, report_date):
             created__gte=participant.enrollment_date,
             created__lt=(report_date + timedelta(days=1)),
             anonymous_visitor=participant.anonymous_visitor).count()
-    
+
     return count and 1 or 0
+
+def calculate_any_participant_conversion(participant, goal_type, report_date):
+    """
+    Determines whether a specific participant achieved a specific goal_type
+    between the participant's enrollment date and the report date.
+    If goal_type is None, then it determines the result for _any_ goal_type.
+    """
+    query = GoalRecord.objects.filter(
+        created__gte=participant.enrollment_date,
+        created__lt=(report_date + timedelta(days=1)),
+        participant=participant)
+
+    if goal_type:
+        query = query.filter(goal_type=goal_type)
+
+    return query.count() and 1 or 0
 
 def calculate_goal_type_conversion(goal_type,
                                    participants,
                                    report_date,
-                                   participant_conversion_calculator=calculate_participant_conversion):
+                                   participant_conversion_calculator=calculate_any_participant_conversion):
     """
     Calculates the number of conversions for a specific goal type among the group of
     participants between each participant's enrollment date and the given report date.
@@ -55,6 +71,16 @@ def find_experiment_group_participants(group, experiment, report_date):
                                       enrollment_date__lte=report_date,
                                       experiment=experiment,
                                       anonymous_visitor__isnull=False)
+
+def find_experiment_any_group_participants(group, experiment, report_date):
+    """
+    Returns a collection of participants belonging to the specified group in the
+    given experiment. It only includes participants that were enrolled in the
+    given report date.
+    """
+    return Participant.objects.filter(group=group,
+                                      enrollment_date__lte=report_date,
+                                      experiment=experiment)
 
 def __rate(a, b):
     if not b or a == None:
@@ -170,7 +196,7 @@ class BaseReportGenerator(object):
 
 class ConversionReportGenerator(BaseReportGenerator):
     def __init__(self, goal_type_conversion_calculator=calculate_goal_type_conversion,
-                 participant_finder=find_experiment_group_participants):
+                 participant_finder=find_experiment_any_group_participants):
         BaseReportGenerator.__init__(self, DailyConversionReport)
         self.goal_type_conversion_calculator = goal_type_conversion_calculator
         self.participant_finder = participant_finder

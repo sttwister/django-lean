@@ -26,46 +26,6 @@ class GoalType(models.Model):
         return self.name
 
 
-class GoalRecord(models.Model):
-    """Records a discreet goal achievement."""
-    created = models.DateTimeField(auto_now_add=True, db_index=True)
-    anonymous_visitor = models.ForeignKey(AnonymousVisitor)
-    goal_type = models.ForeignKey(GoalType)
-
-    @classmethod
-    def _record(cls, goal_name, experiment_user):
-        """
-        Records a goal achievement for the experiment user.
-        If the user does not have an anonymous visitor ID, does nothing.
-        If the goal name is not known, throws an Exception.
-        """
-        anonymous_id = experiment_user.get_anonymous_id()
-        if anonymous_id:
-            anonymous_visitor = AnonymousVisitor.objects.get(id=anonymous_id)
-            if getattr(settings, 'LEAN_AUTOCREATE_GOAL_TYPES', False):
-                (goal_type, created) = GoalType.objects.get_or_create(name=goal_name)
-            else:
-                goal_type = GoalType.objects.get(name=goal_name)
-
-            goal_record = GoalRecord.objects.create(
-                goal_type=goal_type, anonymous_visitor=anonymous_visitor
-            )
-            goal_recorded.send(sender=cls, goal_record=goal_record,
-                               experiment_user=experiment_user)
-            return goal_record
-
-    @classmethod
-    def record(cls, goal_name, experiment_user):
-        try:
-            return cls._record(goal_name, experiment_user)
-        except GoalType.DoesNotExist:
-            if settings.DEBUG:
-                raise
-            l.warning("Can't find the GoalType named %s" % goal_name)
-        except Exception, e:
-            l.exception("Unexpected exception in GoalRecord.record")
-
-
 class Experiment(models.Model):
     """ Defines a split testing experiment"""
     class __UnverifiedUser(object):
@@ -321,3 +281,54 @@ class  DailyConversionReportGoalData(models.Model):
     test_conversion = models.IntegerField()
     control_conversion = models.IntegerField()
     confidence = models.FloatField(null=True)
+
+
+class GoalRecord(models.Model):
+    """Records a discreet goal achievement."""
+    created = models.DateTimeField(auto_now_add=True, db_index=True)
+    anonymous_visitor = models.ForeignKey(AnonymousVisitor, null=True, blank=True)
+    participant = models.ForeignKey(Participant, null=True, blank=True)
+    goal_type = models.ForeignKey(GoalType)
+
+    @classmethod
+    def _record(cls, goal_name, experiment_user):
+        """
+        Records a goal achievement for the experiment user.
+        If the user does not have an anonymous visitor ID, does nothing.
+        If the goal name is not known, throws an Exception.
+        """
+
+        # Create goal type if necesarry
+        if getattr(settings, 'LEAN_AUTOCREATE_GOAL_TYPES', False):
+            (goal_type, created) = GoalType.objects.get_or_create(name=goal_name)
+        else:
+            goal_type = GoalType.objects.get(name=goal_name)
+
+        user = experiment_user.get_registered_user()
+        if user:
+            participant = Participant.objects.get(user=user)
+
+        else:
+            anonymous_id = experiment_user.get_anonymous_id()
+            anonymous_visitor = AnonymousVisitor.objects.get(id=anonymous_id)
+            participant = Participant.objects.get(anonymous_visitor=anonymous_visitor)
+
+        goal_record = GoalRecord.objects.create(
+            goal_type=goal_type, participant=participant
+        )
+        goal_recorded.send(sender=cls, goal_record=goal_record,
+                           experiment_user=experiment_user)
+        return goal_record
+
+    @classmethod
+    def record(cls, goal_name, experiment_user):
+        try:
+            return cls._record(goal_name, experiment_user)
+        except GoalType.DoesNotExist:
+            if settings.DEBUG:
+                raise
+            l.warning("Can't find the GoalType named %s" % goal_name)
+        except Exception, e:
+            l.exception("Unexpected exception in GoalRecord.record")
+
+
