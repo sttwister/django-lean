@@ -306,18 +306,23 @@ class GoalRecord(models.Model):
 
         user = experiment_user.get_registered_user()
         if user:
-            participant = Participant.objects.get(user=user)
-
+            for participant in Participant.objects.filter(user=user):
+                if participant.experiment.state == Experiment.ENABLED_STATE:
+                    goal_record = GoalRecord.objects.create(
+                        goal_type=goal_type, participant=participant
+                    )
+                    goal_recorded.send(sender=cls, goal_record=goal_record,
+                                       experiment_user=experiment_user)
         else:
             anonymous_id = experiment_user.get_anonymous_id()
             anonymous_visitor = AnonymousVisitor.objects.get(id=anonymous_id)
             participant = Participant.objects.get(anonymous_visitor=anonymous_visitor)
 
-        goal_record = GoalRecord.objects.create(
-            goal_type=goal_type, participant=participant
-        )
-        goal_recorded.send(sender=cls, goal_record=goal_record,
-                           experiment_user=experiment_user)
+            goal_record = GoalRecord.objects.create(
+                goal_type=goal_type, participant=participant
+            )
+            goal_recorded.send(sender=cls, goal_record=goal_record,
+                               experiment_user=experiment_user)
         return goal_record
 
     @classmethod
