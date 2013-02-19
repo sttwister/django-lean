@@ -323,7 +323,7 @@ class GoalRecord(models.Model):
             )
             goal_recorded.send(sender=cls, goal_record=goal_record,
                                experiment_user=experiment_user)
-        return goal_record
+            return goal_record
 
     @classmethod
     def record(cls, goal_name, experiment_user):
